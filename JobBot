@@ -1,0 +1,77 @@
+from flask import Flask
+from threading import Thread
+import requests
+import hashlib
+import time
+import datetime
+import pytz
+
+# ======= NASTAVENÍ =======
+URL = "https://mcdonalds.jobs.cz/volna-mista"
+WEBHOOK_URL = "https://canary.discord.com/api/webhooks/1357986850018558093/8u64imuw0ZjLY9bFJK5oD_EixIiEc81M7l0tbm8TaKerPNKOxKbQjfrxYbjKK4Mgn661  # <-- Sem vlož svůj Discord webhook URL"
+INTERVAL_SEKUND = 60  # 3600 sekund = 1 hodina
+# =========================
+
+# Spuštění mini webserveru pro UptimeRobot
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot běží!"
+
+def run():
+    app.run(host='0.0.0.0', port=5000)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# Získání hashe obsahu stránky
+def get_page_hash():
+    response = requests.get(URL)
+    content = response.text
+    return hashlib.md5(content.encode()).hexdigest()
+
+# Uložení hashe do souboru
+def save_hash(current_hash):
+    with open("last_hash.txt", "w") as f:
+        f.write(current_hash)
+
+# Načtení posledního hashe
+def load_last_hash():
+    try:
+        with open("last_hash.txt", "r") as f:
+            return f.read()
+    except FileNotFoundError:
+        return None
+
+# Odeslání zprávy na Discord
+def send_discord_notification():
+    data = {
+        "content": "Změna na stránce McDonald's! Možná nová nabídka práce!",
+        "username": "McWatchdog"
+    }
+    requests.post(WEBHOOK_URL, json=data)
+
+# Kontrola změn
+def check_for_update():
+    current_hash = get_page_hash()
+    last_hash = load_last_hash()
+
+    if current_hash != last_hash:
+        tz = pytz.timezone('Europe/Prague')
+        now = datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M")
+        print(f"[{now}]  Změna na stránce! Upozornění bylo oznámeno.")
+        save_hash(current_hash)
+        send_discord_notification()
+    else:
+        tz = pytz.timezone('Europe/Prague')
+        now = datetime.datetime.now(tz).strftime("%H:%M")
+        print(f"[{now}]  Žádná změna.")
+
+# === SPUŠTĚNÍ ===
+keep_alive()
+
+while True:
+    check_for_update()
+    time.sleep(INTERVAL_SEKUND)
